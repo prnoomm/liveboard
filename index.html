@@ -1,0 +1,811 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Sticky Notes Board</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            box-sizing: border-box;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateY(0);
+            }
+            40% {
+                transform: translateY(-10px);
+            }
+            60% {
+                transform: translateY(-5px);
+            }
+        }
+        
+        @keyframes fadeInDown {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .note-enter {
+            animation: slideInRight 0.5s ease-out, bounce 0.6s ease-out 0.3s;
+        }
+        
+        .notification-enter {
+            animation: fadeInDown 0.3s ease-out;
+        }
+        
+        .sticky-note {
+            transition: all 0.3s ease;
+            cursor: move;
+        }
+        
+        .sticky-note:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+        
+        .action-icons {
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        
+        .sticky-note:hover .action-icons {
+            opacity: 1;
+        }
+        
+        .dragging {
+            transform: rotate(5deg);
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-100 py-4">
+        <div class="max-w-7xl mx-auto px-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z"/>
+                    </svg>
+                </div>
+                <h1 class="text-xl font-semibold text-gray-800">Live Board : อยากจะบอกอะไรกับครูมั๊ย</h1>
+            </div>
+            
+            <div class="flex items-center space-x-3">
+                <button onclick="exportToPDF()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium">
+                    📄 Export Notes
+                </button>
+               <!-- <button onclick="clearBoard()" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium">
+                    🗑️ Clear Board
+                </button>-->
+            </div>
+        </div>
+    </header>
+
+    <!-- Notification Banner -->
+    <div id="notification" class="hidden fixed top-20 left-4 bg-green-100 border border-green-300 text-green-700 px-4 py-2 rounded-lg shadow-lg z-50 notification-enter">
+        <span id="notificationText">มีข้อความใหม่จาก สมชาย</span>
+        <button onclick="hideNotification()" class="ml-2 text-green-500 hover:text-green-700">×</button>
+    </div>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 py-6 pb-24">
+        <div id="notesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max">
+            <!-- Notes will be loaded from Google Sheets -->
+        </div>
+    </main>
+
+    <!-- Online Users Badge -->
+    <div class="fixed bottom-20 right-4 bg-white rounded-full px-4 py-2 shadow-lg border border-gray-200 flex items-center space-x-2 z-40">
+        <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+        <svg class="w-4 h-4 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z"/>
+        </svg>
+        <span class="text-sm text-gray-700 font-medium">ผู้ใช้งานออนไลน์: <span id="onlineCount">12</span></span>
+    </div>
+
+    <!-- Input Bar -->
+    <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-30">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <form id="noteForm" class="flex items-center space-x-3">
+                <div class="flex-1 relative">
+                    <input 
+                        type="text" 
+                        id="noteInput" 
+                        placeholder="พิมพ์ข้อความของคุณ…" 
+                        class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                </div>
+
+                <button type="submit" class="p-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/>
+                    </svg>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 max-w-sm mx-4 shadow-xl">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">ยืนยันการลบ</h3>
+            <p class="text-gray-600 mb-6">คุณต้องการลบโน้ตทั้งหมดใช่หรือไม่? การกระทำนี้ไม่สามารถยกเลิกได้</p>
+            <div class="flex space-x-3">
+                <button onclick="hideConfirmModal()" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                    ยกเลิก
+                </button>
+                <button onclick="confirmClearBoard()" class="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                    ลบทั้งหมด
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const colors = ['bg-yellow-200', 'bg-pink-200', 'bg-blue-200', 'bg-green-200'];
+        const avatarColors = ['bg-blue-400', 'bg-pink-400', 'bg-green-400', 'bg-purple-400', 'bg-orange-400', 'bg-teal-400', 'bg-indigo-400', 'bg-red-400'];
+        let noteCount = 0;
+        let draggedElement = null;
+        
+        // Google Sheets Configuration
+        const SHEET_ID = '1LYasGAXB46nfDnYeeeq-DXrDcqOeljoPrnqPrSYrYJQ';
+        const SHEET_NAME = 'board';
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzBp-9aStL9b3xiF-33CAtXmYoXMAkKNdB7P-GLUadjMMovzY6Ut-hCIr63i46S9ujK/exec';
+        
+        let isLoading = false;
+        let onlineUsers = new Set();
+        let currentUserId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+        // Load notes from Google Sheets on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadNotesFromSheet();
+            trackUserActivity();
+        });
+
+        // Form submission
+        document.getElementById('noteForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const input = document.getElementById('noteInput');
+            const text = input.value.trim();
+            
+            if (text && !isLoading) {
+                addNewNote(text, true); // true = save to sheet
+                input.value = '';
+                showNotification('คุณ');
+            }
+        });
+
+        // Load notes from Google Sheets
+        async function loadNotesFromSheet() {
+            if (isLoading) return;
+            
+            try {
+                isLoading = true;
+                showLoadingState(true);
+                
+                const response = await fetch(`${SCRIPT_URL}?action=read&sheetId=${SHEET_ID}&sheetName=${SHEET_NAME}`);
+                const data = await response.json();
+                
+                if (data.success && data.data) {
+                    // Clear existing sample notes
+                    const grid = document.getElementById('notesGrid');
+                    grid.innerHTML = '';
+                    
+                    // Add notes from sheet
+                    data.data.forEach((row, index) => {
+                        if (row[0] && row[0].trim()) { // Check if note text exists
+                            const noteData = {
+                                text: row[0],
+                                author: row[1] || 'ไม่ระบุชื่อ',
+                                timestamp: formatThaiDateTime(row[2] || 'เมื่อกี้นี้'),
+                                color: row[3] || colors[index % colors.length],
+                                id: row[4] || Date.now() + index,
+                                pinned: row[5] || 'false'
+                            };
+                            addNoteToDOM(noteData);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading notes:', error);
+                showErrorMessage('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่อีกครั้ง');
+            } finally {
+                isLoading = false;
+                showLoadingState(false);
+            }
+        }
+
+        // Save note to Google Sheets
+        async function saveNoteToSheet(noteData) {
+            try {
+                const formData = new FormData();
+                formData.append('action', 'write');
+                formData.append('sheetId', SHEET_ID);
+                formData.append('sheetName', SHEET_NAME);
+                formData.append('text', noteData.text);
+                formData.append('author', noteData.author);
+                formData.append('timestamp', noteData.timestamp);
+                formData.append('color', noteData.color);
+                formData.append('id', noteData.id);
+                formData.append('pinned', noteData.pinned || 'false');
+                
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to save note');
+                }
+                
+                return result;
+            } catch (error) {
+                console.error('Error saving note:', error);
+                showErrorMessage('ไม่สามารถบันทึกข้อมูลได้');
+                throw error;
+            }
+        }
+
+        // Format timestamp to Thai format with seconds (Christian era)
+        function formatThaiDateTime(dateString) {
+            try {
+                // If it's already in Thai format, return as is
+                if (dateString.includes('/') && dateString.includes('20')) {
+                    // Check if it already has seconds
+                    const parts = dateString.split(' ');
+                    if (parts.length === 2) {
+                        const timePart = parts[1];
+                        if (timePart.split(':').length === 2) {
+                            // Add seconds if missing
+                            return dateString + ':00';
+                        }
+                    }
+                    return dateString;
+                }
+                
+                // Parse the date
+                const date = new Date(dateString);
+                if (isNaN(date.getTime())) {
+                    return dateString; // Return original if can't parse
+                }
+                
+                // Format with Christian era year
+                const year = date.getFullYear();
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                const seconds = String(date.getSeconds()).padStart(2, '0');
+                
+                return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+            } catch (error) {
+                console.error('Error formatting date:', error);
+                return dateString;
+            }
+        }
+
+        // Delete note from Google Sheets
+        async function deleteNoteFromSheet(noteId) {
+            try {
+                const formData = new FormData();
+                formData.append('action', 'delete');
+                formData.append('sheetId', SHEET_ID);
+                formData.append('sheetName', SHEET_NAME);
+                formData.append('id', noteId);
+                
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to delete note');
+                }
+                
+                return result;
+            } catch (error) {
+                console.error('Error deleting note:', error);
+                showErrorMessage('ไม่สามารถลบข้อมูลได้');
+                throw error;
+            }
+        }
+
+        // Update note in Google Sheets
+        async function updateNoteInSheet(noteId, updates) {
+            try {
+                const formData = new FormData();
+                formData.append('action', 'update');
+                formData.append('sheetId', SHEET_ID);
+                formData.append('sheetName', SHEET_NAME);
+                formData.append('id', noteId);
+                
+                if (updates.text) formData.append('text', updates.text);
+                if (updates.pinned) formData.append('pinned', updates.pinned);
+                
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to update note');
+                }
+                
+                return result;
+            } catch (error) {
+                console.error('Error updating note:', error);
+                showErrorMessage('ไม่สามารถอัปเดตข้อมูลได้');
+                throw error;
+            }
+        }
+
+        async function addNewNote(text, saveToSheet = false) {
+            const noteData = {
+                text: text,
+                author: 'คุณ',
+                timestamp: 'กำลังบันทึก...', // Temporary placeholder
+                color: colors[noteCount % colors.length],
+                id: Date.now().toString()
+            };
+            
+            // Save to Google Sheets first to get correct timestamp
+            if (saveToSheet) {
+                try {
+                    const result = await saveNoteToSheet(noteData);
+                    // Use timestamp from server response and format it
+                    if (result.timestamp) {
+                        noteData.timestamp = formatThaiDateTime(result.timestamp);
+                    }
+                    
+                    // Add to DOM with correct timestamp
+                    addNoteToDOM(noteData);
+                    
+                } catch (error) {
+                    // If save fails, still add to DOM but show error
+                    noteData.timestamp = 'ไม่สามารถบันทึกได้';
+                    addNoteToDOM(noteData);
+                    console.error('Failed to save note to sheet:', error);
+                }
+            } else {
+                // Add to DOM without saving
+                addNoteToDOM(noteData);
+            }
+            
+            noteCount++;
+        }
+
+        function addNoteToDOM(noteData) {
+            const grid = document.getElementById('notesGrid');
+            const avatarColor = avatarColors[Math.floor(Math.random() * avatarColors.length)];
+            
+            const noteElement = document.createElement('div');
+            noteElement.className = `sticky-note ${noteData.color} p-4 rounded-xl shadow-md relative group note-enter`;
+            noteElement.draggable = true;
+            noteElement.dataset.noteId = noteData.id;
+            noteElement.dataset.pinned = noteData.pinned || 'false';
+            
+            const pinnedClass = noteData.pinned === 'true' ? 'ring-2 ring-yellow-400' : '';
+            const pinnedIcon = noteData.pinned === 'true' ? '📍' : '📌';
+            
+            if (pinnedClass) {
+                noteElement.classList.add('ring-2', 'ring-yellow-400');
+            }
+            
+            noteElement.innerHTML = `
+                <div class="action-icons absolute top-2 right-2 flex space-x-1">
+                    <button onclick="togglePin(this)" class="w-6 h-6 bg-white rounded-full shadow-sm flex items-center justify-center hover:bg-gray-50" title="${noteData.pinned === 'true' ? 'ยกเลิกปักหมุด' : 'ปักหมุด'}">${pinnedIcon}</button>
+                    <button onclick="editNote(this)" class="w-6 h-6 bg-white rounded-full shadow-sm flex items-center justify-center hover:bg-gray-50" title="แก้ไข">✏️</button>
+                    <button onclick="deleteNote(this)" class="w-6 h-6 bg-white rounded-full shadow-sm flex items-center justify-center hover:bg-gray-50" title="ลบ">🗑️</button>
+                </div>
+                <p class="text-gray-800 font-medium note-text">${noteData.text}</p>
+                <div class="flex items-center mt-3 text-xs text-gray-600">
+                    <div class="w-6 h-6 ${avatarColor} rounded-full flex items-center justify-center text-white font-bold mr-2">${noteData.author.charAt(0)}</div>
+                    <span>${noteData.author} • ${noteData.timestamp}</span>
+                </div>
+            `;
+            
+            // Add drag event listeners
+            noteElement.addEventListener('dragstart', handleDragStart);
+            noteElement.addEventListener('dragend', handleDragEnd);
+            
+            // Insert pinned notes at the beginning
+            if (noteData.pinned === 'true') {
+                const firstUnpinnedNote = grid.querySelector('.sticky-note:not([data-pinned="true"])');
+                if (firstUnpinnedNote) {
+                    grid.insertBefore(noteElement, firstUnpinnedNote);
+                } else {
+                    grid.appendChild(noteElement);
+                }
+            } else {
+                grid.appendChild(noteElement);
+            }
+            
+            return noteElement; // Return the element for later updates
+        }
+
+        async function togglePin(button) {
+            const note = button.closest('.sticky-note');
+            const noteId = note.dataset.noteId;
+            const currentPinned = note.dataset.pinned === 'true';
+            const newPinned = !currentPinned;
+            
+            // Update UI immediately
+            note.dataset.pinned = newPinned.toString();
+            button.textContent = newPinned ? '📍' : '📌';
+            button.title = newPinned ? 'ยกเลิกปักหมุด' : 'ปักหมุด';
+            
+            if (newPinned) {
+                note.classList.add('ring-2', 'ring-yellow-400');
+                // Move to top
+                const grid = document.getElementById('notesGrid');
+                const firstUnpinnedNote = grid.querySelector('.sticky-note:not([data-pinned="true"])');
+                if (firstUnpinnedNote && firstUnpinnedNote !== note) {
+                    grid.insertBefore(note, firstUnpinnedNote);
+                }
+            } else {
+                note.classList.remove('ring-2', 'ring-yellow-400');
+            }
+            
+            // Update in Google Sheets if noteId exists
+            if (noteId) {
+                try {
+                    await updateNoteInSheet(noteId, { pinned: newPinned.toString() });
+                } catch (error) {
+                    console.error('Failed to update pin status:', error);
+                    showErrorMessage('ไม่สามารถอัปเดตสถานะปักหมุดได้');
+                }
+            }
+        }
+
+        async function editNote(button) {
+            const note = button.closest('.sticky-note');
+            const noteText = note.querySelector('.note-text');
+            const currentText = noteText.textContent;
+            const noteId = note.dataset.noteId;
+            
+            // Create inline edit input
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentText;
+            input.className = 'w-full px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 font-medium';
+            
+            // Replace text with input
+            noteText.style.display = 'none';
+            noteText.parentNode.insertBefore(input, noteText);
+            input.focus();
+            input.select();
+            
+            // Handle save/cancel
+            const saveEdit = async () => {
+                const newText = input.value.trim();
+                if (newText && newText !== currentText) {
+                    noteText.textContent = newText;
+                    
+                    // Update in Google Sheets if noteId exists
+                    if (noteId) {
+                        try {
+                            await updateNoteInSheet(noteId, { text: newText });
+                        } catch (error) {
+                            console.error('Failed to update note:', error);
+                            showErrorMessage('ไม่สามารถบันทึกการแก้ไขได้');
+                            noteText.textContent = currentText; // Revert
+                        }
+                    }
+                }
+                
+                input.remove();
+                noteText.style.display = '';
+            };
+            
+            const cancelEdit = () => {
+                input.remove();
+                noteText.style.display = '';
+            };
+            
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveEdit();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelEdit();
+                }
+            });
+            
+            input.addEventListener('blur', saveEdit);
+        }
+
+        async function deleteNote(button) {
+            const note = button.closest('.sticky-note');
+            const noteId = note.dataset.noteId;
+            
+            // Animate removal
+            note.style.transform = 'scale(0)';
+            note.style.opacity = '0';
+            
+            // Delete from Google Sheets if noteId exists
+            if (noteId) {
+                try {
+                    await deleteNoteFromSheet(noteId);
+                } catch (error) {
+                    // If delete fails, restore the note
+                    note.style.transform = '';
+                    note.style.opacity = '';
+                    showErrorMessage('ไม่สามารถลบโน้ตได้');
+                    return;
+                }
+            }
+            
+            setTimeout(() => {
+                note.remove();
+            }, 300);
+        }
+
+        function showNotification(userName) {
+            const notification = document.getElementById('notification');
+            const notificationText = document.getElementById('notificationText');
+            notificationText.textContent = `มีข้อความใหม่จาก ${userName}`;
+            
+            notification.classList.remove('hidden');
+            
+            setTimeout(() => {
+                hideNotification();
+            }, 3000);
+        }
+
+        function hideNotification() {
+            const notification = document.getElementById('notification');
+            notification.classList.add('hidden');
+        }
+
+
+
+        // Track user activity and maintain online status
+        async function trackUserActivity() {
+            // Register user as online immediately
+            await updateUserActivityInSheet();
+            
+            // Update activity every 30 seconds
+            setInterval(async () => {
+                await updateUserActivityInSheet();
+            }, 30000);
+            
+            // Get online count every 15 seconds
+            setInterval(async () => {
+                await getOnlineUsersCount();
+            }, 15000);
+        }
+
+        // Update user activity in Google Sheets
+        async function updateUserActivityInSheet() {
+            try {
+                const formData = new FormData();
+                formData.append('action', 'updateUserActivity');
+                formData.append('sheetId', SHEET_ID);
+                formData.append('sheetName', SHEET_NAME);
+                formData.append('userId', currentUserId);
+                formData.append('userAgent', navigator.userAgent.substring(0, 100)); // Limit length
+                
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (result.success && result.activeUsers !== undefined) {
+                    const count = document.getElementById('onlineCount');
+                    count.textContent = result.activeUsers;
+                }
+            } catch (error) {
+                console.error('Error updating user activity:', error);
+            }
+        }
+
+        // Get online users count from Google Sheets
+        async function getOnlineUsersCount() {
+            try {
+                const response = await fetch(`${SCRIPT_URL}?action=getOnlineUsers&sheetId=${SHEET_ID}&sheetName=${SHEET_NAME}`);
+                const result = await response.json();
+                
+                if (result.success && result.activeUsers !== undefined) {
+                    const count = document.getElementById('onlineCount');
+                    count.textContent = result.activeUsers;
+                }
+            } catch (error) {
+                console.error('Error getting online users:', error);
+            }
+        }
+
+        function exportToPDF() {
+            try {
+                // Get all notes with their details
+                const notes = document.querySelectorAll('.sticky-note');
+                let content = 'Live Sticky Notes Board\n';
+                content += '='.repeat(50) + '\n\n';
+                
+                if (notes.length === 0) {
+                    content += 'ไม่มีโน้ตในบอร์ด\n';
+                } else {
+                    notes.forEach((note, index) => {
+                        const text = note.querySelector('p').textContent;
+                        const authorInfo = note.querySelector('.text-xs span').textContent;
+                        
+                        content += `${index + 1}. ${text}\n`;
+                        content += `   ${authorInfo}\n\n`;
+                    });
+                }
+                
+                content += '\n' + '='.repeat(50) + '\n';
+                content += `ส่งออกเมื่อ: ${new Date().toLocaleString('th-TH')}\n`;
+                content += `จำนวนโน้ตทั้งหมด: ${notes.length} รายการ`;
+                
+                // Create and download file
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `sticky-notes-${new Date().toISOString().split('T')[0]}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                // Show success notification
+                showNotification('ส่งออกไฟล์สำเร็จ!');
+                
+            } catch (error) {
+                console.error('Export error:', error);
+                showErrorMessage('ไม่สามารถส่งออกไฟล์ได้');
+            }
+        }
+
+        function clearBoard() {
+            document.getElementById('confirmModal').classList.remove('hidden');
+        }
+
+        function hideConfirmModal() {
+            document.getElementById('confirmModal').classList.add('hidden');
+        }
+
+        async function confirmClearBoard() {
+            const notes = document.querySelectorAll('.sticky-note');
+            
+            // Clear from Google Sheets first
+            try {
+                const formData = new FormData();
+                formData.append('action', 'clear');
+                formData.append('sheetId', SHEET_ID);
+                formData.append('sheetName', SHEET_NAME);
+                
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to clear board');
+                }
+                
+                // If successful, animate removal
+                notes.forEach((note, index) => {
+                    setTimeout(() => {
+                        note.style.transform = 'scale(0)';
+                        note.style.opacity = '0';
+                        setTimeout(() => {
+                            note.remove();
+                        }, 300);
+                    }, index * 100);
+                });
+                
+            } catch (error) {
+                console.error('Error clearing board:', error);
+                showErrorMessage('ไม่สามารถล้างบอร์ดได้');
+            }
+            
+            hideConfirmModal();
+        }
+
+        function showLoadingState(show) {
+            const submitButton = document.querySelector('button[type="submit"]');
+            if (show) {
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>';
+            } else {
+                submitButton.disabled = false;
+                submitButton.innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/></svg>';
+            }
+        }
+
+        function showErrorMessage(message) {
+            const notification = document.getElementById('notification');
+            const notificationText = document.getElementById('notificationText');
+            
+            notification.className = 'fixed top-20 left-4 bg-red-100 border border-red-300 text-red-700 px-4 py-2 rounded-lg shadow-lg z-50 notification-enter';
+            notificationText.textContent = message;
+            notification.classList.remove('hidden');
+            
+            setTimeout(() => {
+                hideNotification();
+                // Reset to original style
+                notification.className = 'hidden fixed top-20 left-4 bg-green-100 border border-green-300 text-green-700 px-4 py-2 rounded-lg shadow-lg z-50 notification-enter';
+            }, 4000);
+        }
+
+        // Drag and Drop functionality
+        function handleDragStart(e) {
+            draggedElement = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            draggedElement = null;
+        }
+
+        // Add drag over and drop event listeners to the grid
+        const grid = document.getElementById('notesGrid');
+        
+        grid.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        });
+
+        grid.addEventListener('drop', function(e) {
+            e.preventDefault();
+            if (draggedElement) {
+                const afterElement = getDragAfterElement(grid, e.clientY);
+                if (afterElement == null) {
+                    grid.appendChild(draggedElement);
+                } else {
+                    grid.insertBefore(draggedElement, afterElement);
+                }
+            }
+        });
+
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.sticky-note:not(.dragging)')];
+            
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
+        // Drag event listeners will be added when notes are created dynamically
+
+
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9904c19677493e44',t:'MTc2MDc1NjEyMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
